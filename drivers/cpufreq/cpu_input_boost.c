@@ -12,7 +12,6 @@
 #include <linux/kthread.h>
 #include <linux/version.h>
 #include <linux/slab.h>
-#include <linux/battery_saver.h>
 #include <linux/moduleparam.h>
 #include <uapi/linux/sched/types.h>
 
@@ -72,18 +71,6 @@ static unsigned int get_input_boost_freq(struct cpufreq_policy *policy)
 	return min(freq, policy->max);
 }
 
-static unsigned int get_min_freq(struct cpufreq_policy *policy)
-{
-	unsigned int freq;
-
-	if (cpumask_test_cpu(policy->cpu, cpu_lp_mask))
-		freq = CONFIG_MIN_FREQ_LP;
-	else
-		freq = CONFIG_MIN_FREQ_PERF;
-
-	return min(freq, policy->max);
-}
-
 static unsigned int get_max_boost_freq(struct cpufreq_policy *policy)
 {
 	unsigned int freq;
@@ -119,7 +106,7 @@ bool cpu_input_boost_within_input(unsigned long timeout_ms)
 
 static void __cpu_input_boost_kick(struct boost_drv *b)
 {
-	if (test_bit(SCREEN_OFF, &b->state) || is_battery_saver_on())
+	if (test_bit(SCREEN_OFF, &b->state))
 		return;
 
 	set_bit(INPUT_BOOST, &b->state);
@@ -141,7 +128,7 @@ static void __cpu_input_boost_kick_max(struct boost_drv *b,
 	unsigned long boost_jiffies = msecs_to_jiffies(duration_ms);
 	unsigned long curr_expires, new_expires;
 
-	if (test_bit(SCREEN_OFF, &b->state) || is_battery_saver_on())
+	if (test_bit(SCREEN_OFF, &b->state))
 		return;
 
 	do {
@@ -240,8 +227,10 @@ static int cpu_notifier_cb(struct notifier_block *nb, unsigned long action,
 	 */
 	if (test_bit(INPUT_BOOST, &b->state))
 		policy->min = get_input_boost_freq(policy);
+	else if (cpumask_test_cpu(policy->cpu, cpu_lp_mask))
+		policy->min = CONFIG_MIN_FREQ_LP;
 	else
-		policy->min = get_min_freq(policy);
+		policy->min = CONFIG_MIN_FREQ_PERF;
 
 	return NOTIFY_OK;
 }
@@ -382,8 +371,7 @@ static int __init cpu_input_boost_init(void)
 		goto unregister_handler;
 	}
 
-	thread = kthread_run_perf_critical(cpu_perf_mask,
-					cpu_boost_thread, b, "cpu_boostd");
+	thread = kthread_run(cpu_boost_thread, b, "cpu_boostd");
 	if (IS_ERR(thread)) {
 		ret = PTR_ERR(thread);
 		pr_err("Failed to start CPU boost thread, err: %d\n", ret);
