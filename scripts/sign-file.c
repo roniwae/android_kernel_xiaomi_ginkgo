@@ -28,6 +28,12 @@
 #include <openssl/pem.h>
 #include <openssl/err.h>
 #include <openssl/engine.h>
+/*
+ * OpenSSL 3.0 deprecates the OpenSSL's ENGINE API.
+ *
+ * Remove this if/when that API is no longer used
+ */
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
 
 /*
  * Use CMS if we have openssl-1.0.0 or newer available - otherwise we have to
